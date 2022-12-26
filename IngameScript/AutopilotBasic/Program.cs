@@ -30,85 +30,52 @@ namespace IngameScript
  * top of your final script. You can safely delete this file if you do not want any such comments.
  */
 
-        // TODO
-        // - introduce gravity constant
-        // - fuel efficiency system(high)
-        //   - non dampener crusing (done maybe difficult)
-        //   - automatic damper off (easy) // done
-        //   - battery efficiency driven thruster switching
-        //   - early gravity ignorance(done)
-        // - prefloating
-        // - fitting mode (important => connection system )
-        // - automatic connection system(high maybe difficult)
-        // - remote trigger system(high)
-        // - preflight(important)
-        // - instruction parser and delivery system(mid)
-
-        // - ship avoidance system(mid)
-        // - improvement orientation setting in zero-gravity environment(mid)
-        // - progress prediction(high and easy to prototype)
-
         // interface caching
-        ConnectorClient client;
-        FlightRecorder recorder;
         IMyCockpit cockpit;
         IMyShipConnector mainConnector;
         IMyRemoteControl remoteControl;
         IMyRadioAntenna debugAnntena;
         IMyProgrammableBlock programmableBlock;
-        List<IMyGyro> gyros = new List<IMyGyro>();
-        List<IMyThrust> thrusters = new List<IMyThrust>();
-        List<IMyThrust> atmosphericThrusters = new List<IMyThrust>();
-        List<IMyThrust> hydrogenThrusters = new List<IMyThrust>();
-        List<IMyThrust> ionThrusters = new List<IMyThrust>();
-        List<IMyThrust> activeThrusters = new List<IMyThrust>();
+
         List<MyWaypointInfo> waypoints = new List<MyWaypointInfo>();
         List<IMyGasTank> tanks = new List<IMyGasTank>();
 
-        // calculation caching
-        // If cockpit.Orientation.Forward != Base6Direction.Direction.Forward, this ship goes wrong directions.
-        // We use the map to solve this problem.
-        Dictionary<IMyThrust, Base6Directions.Direction> thruster2direction = new Dictionary<IMyThrust, Base6Directions.Direction>();
+        // controllers
+        ConnectorClient client;
+        FlightRecorder recorder;
+        GyroController gyroController = null;
+        ThrusterController thrusterController = null;
 
         // constant value
-        float reactionConstant = 0.8f;
-        float reachConstant = 2.0f; // stoppingRange
-        float antiGravityCoeff = 1.1f;
-        float rotationMergin = 0.07f;
-        float gyroSensitivity = 1.5f;
-        float gravityMergin = 0.05f;
-        float upRunningDistance = 1000f;
-        float brakingDistance = 100f;
-        float brakingSpeed = 5f;
-        float fittingDistance = 1f;
-        float fittingSpeed = 2f;
-        float upRunningSpeed = 40f;
-        float stoppingSpeed = 1f;
-        float cruisingSpeed = 98f;
-        float cutoffEfficiency = 0.3f;
-        float EPS = 0.001f;
-        int recordInterval = 10; // at every 10 updates
+        readonly float ReachConstant = 2.0f; // stoppingRange
+        readonly float AntiGravityCoeff = 1.1f;
+        readonly float GravityMergin = 0.05f;
+        readonly float UpRunningDistance = 1000f;
+        readonly float BrakingDistance = 100f;
+        readonly float BrakingSpeed = 5f;
+        readonly float FittingDistance = 1f;
+        readonly float FittingSpeed = 2f;
+        readonly float UpRunningSpeed = 40f;
+        readonly float StoppingSpeed = 1f;
+        readonly float CruisingSpeed = 98f;
+        readonly float EPS = 0.001f;
 
-        string programmableBlockName = "Programmable block";
-        string mainConnectorName = "Connector";
-        string hydrogenTankGroupName = "HydrogenTanks";
-        string cockpitName = "Cockpit";
-        string controlSeatName = "Control Seat";
-        string gyroName = "Gyro";
-        string remoteControlName = "Remote";
+        readonly string ProgrammableBlockName = "Programmable block";
+        readonly string MainConnectorName = "Connector";
+        readonly string HydrogenTankGroupName = "HydrogenTanks";
+        readonly string CockpitName = "Cockpit";
+        readonly string ControlSeatName = "Control Seat";
+        readonly string GyroName = "Gyro";
+        readonly string RemoteControlName = "Remote";
 
         // state value
         InertiaAutoPilotMode mode = InertiaAutoPilotMode.Initial;
-        RotationPhase rotationPhase = RotationPhase.Roll;
         AutoConnectionPhase autoConnectionPhase = AutoConnectionPhase.RequestingConnectorInfo;
 
         Vector3D currentDestination;
         ConnectorInfo targetConnector;
 
-        float shipMass = 0.0f;
         int currentWaypointIndex = 0;
-        bool atmosphericOn = true;
-        bool hydrogenOn = true;
         int recordCounter = 0;
 
         // state enum
@@ -133,54 +100,16 @@ namespace IngameScript
             RequestingConnectorInfo, ApproachOffset, FittingConnector
         }
 
-        // This file contains your actual script.
-        //
-        // You can either keep all your code here, or you can create separate
-        // code files to make your program easier to navigate while coding.
-        //
-        // In order to add a new utility class, right-click on your project,
-        // select 'New' then 'Add Item...'. Now find the 'Space Engineers'
-        // category under 'Visual C# Items' on the left hand side, and select
-        // 'Utility Class' in the main area. Name it in the box below, and
-        // press OK. This utility class will be merged in with your code when
-        // deploying your final script.
-        //
-        // You can also simply create a new utility class manually, you don't
-        // have to use the template if you don't want to. Just do so the first
-        // time to see what a utility class looks like.
-        //
-        // Go to:
-        // https://github.com/malware-dev/MDK-SE/wiki/Quick-Introduction-to-Space-Engineers-Ingame-Scripts
-        //
-        // to learn more about ingame scripts.
-
         public Program()
         {
-            // The constructor, called only once every session and
-            // always before any other method is called. Use it to
-            // initialize your script.
-            //
-            // The constructor is optional and can be removed if not
-            // needed.
-            //
-            // It's recommended to set Runtime.UpdateFrequency
-            // here, which will allow your script to run itself without a
-            // timer block.
             Runtime.UpdateFrequency = UpdateFrequency.Update10;
             mode = InertiaAutoPilotMode.Initial;
-            gyros = new List<IMyGyro>();
-            thrusters = new List<IMyThrust>();
             client = new ConnectorClient(IGC);
         }
 
         public void Save()
         {
-            // Called when the program needs to save its state. Use
-            // this method to save your state to the Storage field
-            // or some other means.
-            //
-            // This method is optional and can be removed if not
-            // needed.
+
         }
 
         private void DebugIndicate(string str)
@@ -193,252 +122,11 @@ namespace IngameScript
             DebugIndicate($"{prefix}::{v.X:f2}, {v.Y:f2}, {v.Z:f2}");
         }
 
-        private void InitializeDirectionOfThrusters()
-        {
-            var shipRot = Quaternion.CreateFromRotationMatrix(cockpit.WorldMatrix);
-            var shipForward = shipRot.Forward;
-            var shipRight = shipRot.Right;
-            var shipUp = shipRot.Up;
-
-            foreach (var thruster in thrusters)
-            {
-                var thrusterRot = Quaternion.CreateFromRotationMatrix(thruster.WorldMatrix);
-                var thrusterForward = thrusterRot.Forward;
-
-                var forwardDot = Vector3.Dot(thrusterForward, shipForward);
-                var rightDot = Vector3.Dot(thrusterForward, shipRight);
-                var upDot = Vector3.Dot(thrusterForward, shipUp);
-
-                if (forwardDot > 0.9f)
-                {
-                    thruster2direction.Add(thruster, Base6Directions.Direction.Backward);
-                    continue;
-                }
-                else if (forwardDot < -0.9f)
-                {
-                    thruster2direction.Add(thruster, Base6Directions.Direction.Forward);
-                    continue;
-                }
-                if (rightDot > 0.9f)
-                {
-                    thruster2direction.Add(thruster, Base6Directions.Direction.Left);
-                    continue;
-                }
-                else if (rightDot < -0.9f)
-                {
-                    thruster2direction.Add(thruster, Base6Directions.Direction.Right);
-                    continue;
-                }
-                if (upDot > 0.9f)
-                {
-                    thruster2direction.Add(thruster, Base6Directions.Direction.Down);
-                    continue;
-                }
-                else if (upDot < -0.9f)
-                {
-                    thruster2direction.Add(thruster, Base6Directions.Direction.Up);
-                    continue;
-                }
-            }
-        }
-
-        private void SetGyro(double roll, double pitch, double yaw)
-        {
-            // TODO: multi-direction gyroscopes
-            foreach (var gyro in gyros)
-            {
-                gyro.GyroOverride = true;
-                gyro.Roll = (float)roll * gyroSensitivity;
-                gyro.Pitch = (float)pitch * gyroSensitivity;
-                gyro.Yaw = (float)yaw * gyroSensitivity;
-            }
-        }
-
-        private void FreeGyro()
-        {
-            foreach (var gyro in gyros)
-            {
-                gyro.GyroOverride = false;
-            }
-        }
-
         private void StartAutomaticConnection()
         {
             mode = InertiaAutoPilotMode.AutoConnection;
             autoConnectionPhase = AutoConnectionPhase.RequestingConnectorInfo;
             client.TryToGetConnectorInfo(mainConnector.GetPosition());
-        }
-
-        private void Accelerate(Vector3 targetVelocity, Vector3 gravity)
-        {
-            // 6-maximum force calculation
-            // calculation thruster unit count (large thruster = n * small thruster)
-            Dictionary<Base6Directions.Direction, float> maxF = new Dictionary<Base6Directions.Direction, float>();
-            Dictionary<Base6Directions.Direction, int> units = new Dictionary<Base6Directions.Direction, int>();
-            Dictionary<Base6Directions.Direction, List<IMyThrust>> thrusterDict = new Dictionary<Base6Directions.Direction, List<IMyThrust>>();
-            Dictionary<IMyThrust, float> assignWeight = new Dictionary<IMyThrust, float>();
-            for (int i = 0; i <= (int)Base6Directions.Direction.Down; i++)
-            {
-                maxF[(Base6Directions.Direction)i] = 0;
-                units[(Base6Directions.Direction)i] = 0;
-                thrusterDict.Add((Base6Directions.Direction)i, new List<IMyThrust>());
-            }
-            foreach (var thr in activeThrusters)
-            {
-                if (thr.IsWorking)
-                {
-                    var dir = thruster2direction[thr];
-
-                    // map to relative direction6
-                    maxF[dir] += thr.MaxEffectiveThrust;
-                    thrusterDict[dir].Add(thr);
-
-                    //Echo($"{dir.ToString()}: {thr.CustomName}");
-                }
-            }
-
-            // calculate target force using kinematic equation considering gravity
-            var shipRot = Quaternion.CreateFromRotationMatrix(cockpit.WorldMatrix);
-            var currentVelocity = cockpit.GetShipVelocities().LinearVelocity;
-            var relative = targetVelocity - currentVelocity;
-
-            //DebugIndicate(relative, "re;");
-            //DebugIndicate(currentVelocity, "cV;");
-
-            var accelerateForce = (relative / reactionConstant) * shipMass; // F = ma
-            var gravityForce = -gravity * shipMass;
-            Echo($"g: {gravity.Length()} gv: {gravity.ToString()}");
-
-            // calculate anti-gravity force components(anti-gravity force is more important than acceleration)
-            Vector3[] axises = new Vector3[]
-            {
-                Vector3.Forward, Vector3.Backward,
-                Vector3.Left, Vector3.Right,
-                Vector3.Up, Vector3.Down
-            };
-            var leftMaxF = new Dictionary<Base6Directions.Direction, float>();
-            Dictionary<Base6Directions.Direction, float> components = new Dictionary<Base6Directions.Direction, float>();
-            var localGravityForce = Vector3.Transform(gravityForce, Quaternion.Inverse(shipRot));
-            float antiGravityGiveUpRatio = 1f;
-
-            for (int i = 0; i <= (int)Base6Directions.Direction.Down; i++)
-            {
-                var dir = (Base6Directions.Direction)i;
-                var axis = axises[i];
-                var component = Vector3.Dot(axis, localGravityForce);
-                if (component <= 0) continue;
-                antiGravityGiveUpRatio = Math.Min(maxF[dir] / component, antiGravityGiveUpRatio);
-            }
-            var targetGravityForce = localGravityForce * antiGravityGiveUpRatio;
-            for (int i = 0; i <= (int)Base6Directions.Direction.Down; i++)
-            {
-                var dir = (Base6Directions.Direction)i;
-                var axis = axises[i];
-                components[dir] = Math.Max(Vector3.Dot(axis, targetGravityForce), 0);
-                leftMaxF[dir] = maxF[dir] - components[dir];
-            }
-
-            //DebugIndicate(localGravityForce, $"giv:{antiGravityGiveUpRatio} g:");
-
-            // calculate accelerate force components
-            var giveUpRatio = 1f;
-            var localAccelerateForce = Vector3.Transform(accelerateForce, Quaternion.Inverse(shipRot));// localize targetForce
-            for (int i = 0; i <= (int)Base6Directions.Direction.Down; i++)
-            {
-                var dir = (Base6Directions.Direction)i;
-                var axis = axises[i];
-                var component = Vector3.Dot(axis, localAccelerateForce);
-                if (component <= 0) continue;
-                giveUpRatio = Math.Min(leftMaxF[dir] / component, giveUpRatio);
-            }
-            var targetAccelerateForce = localAccelerateForce * giveUpRatio;
-
-            //DebugIndicate(accelerateForce, $"giv:{giveUpRatio} aF:");
-            //DebugIndicate(targetAccelerateForce, $"giv:{giveUpRatio} tAF:");
-
-            for (int i = 0; i <= (int)Base6Directions.Direction.Down; i++)
-            {
-                var dir = (Base6Directions.Direction)i;
-                var axis = axises[i];
-                components[dir] += Math.Max(Vector3.Dot(axis, targetAccelerateForce), 0);
-            }
-
-            //Echo($"mass: {shipMass}kg");
-            // force assignment
-            for (int i = 0; i <= (int)Base6Directions.Direction.Down; i++)
-            {
-                var dir = (Base6Directions.Direction)i;
-                //var forcePerUnit = components[dir] / units[dir];
-                foreach (var thr in thrusterDict[dir])
-                {
-                    Echo(thr.CustomName + ";" +
-                        "; fPU" + units[dir].ToString("f2") +
-                        "; comp; " + components[dir]);
-                    //thr.ThrustOverride = forcePerUnit;
-
-                    // balanced assignment
-                    thr.ThrustOverride = components[dir] * (thr.MaxEffectiveThrust / maxF[dir]);
-                }
-            }
-        }
-
-        private void BreakSpeed()
-        {
-            SwitchDampener(true);
-        }
-
-        private void FreeAllThruster()
-        {
-            foreach (var thr in thrusters)
-            {
-                if (thr.IsWorking)
-                {
-                    thr.ThrustOverridePercentage = -1;
-                }
-            }
-        }
-
-        private void AutoSwitchThruster()
-        {
-            activeThrusters.Clear();
-
-            // about atmospheric trusters
-            foreach (var thr in atmosphericThrusters)
-            {
-                Echo($"{thr.CustomName}: {(thr.MaxEffectiveThrust / thr.MaxThrust)}({cutoffEfficiency})");
-                if ((thr.MaxEffectiveThrust / thr.MaxThrust) < cutoffEfficiency)
-                {
-                    thr.ThrustOverride = -1;
-                    thr.Enabled = false;
-                }
-                else
-                {
-                    thr.Enabled = true;
-                    activeThrusters.Add(thr);
-                }
-            }
-
-            // about hydrogen trusters
-            // if only atmospheric trusters can't lift ship, turn on hydrogen trusters
-            var lifableForce = shipMass * GetGravityAsN().Length();
-            var gravityAxis = Vector3.Normalize(cockpit.GetTotalGravity());
-            var totalLiftPower = 0f;
-            foreach (var thr in atmosphericThrusters)
-            {
-                var rot = thr.WorldMatrix;
-                var effectiveForce = Vector3.Transform(Vector3.Forward, Matrix.Invert(rot)) * thr.MaxEffectiveThrust;
-                totalLiftPower += Vector3.Dot(-gravityAxis, effectiveForce);
-            }
-            Echo($"lF: {lifableForce:f2}, tL: {totalLiftPower:f2}, en: {lifableForce <= totalLiftPower}");
-            if (lifableForce <= totalLiftPower) // capa
-            {
-                foreach (var thr in hydrogenThrusters) thr.Enabled = true;
-            }
-            else // can't lift
-            {
-                foreach (var thr in hydrogenThrusters) thr.Enabled = false;
-            }
-            activeThrusters.AddRange(hydrogenThrusters);
         }
 
         private void SwitchDampener(bool active)
@@ -451,11 +139,6 @@ namespace IngameScript
             return currentDestination - cockpit.GetPosition();
         }
 
-        private Vector3 GetGravityAsN()
-        {
-            return cockpit.GetTotalGravity();
-        }
-
         private bool Stabilize()
         {
             var direction = GetDirection();
@@ -463,9 +146,9 @@ namespace IngameScript
 
             var result = false;
 
-            if (gravity.Length() > gravityMergin) // high-gravity environment
+            if (gravity.Length() > GravityMergin) // high-gravity environment
             {
-                result = OrientationSetting(direction, cockpit.GetTotalGravity());
+                result = gyroController.AlignToGround(direction, cockpit.GetTotalGravity());
             }
             else // low-gravity enviroment
             {
@@ -483,7 +166,7 @@ namespace IngameScript
                 {
                     freeGroundAxis = Vector3.Cross(direction, Vector3.Up);
                 }
-                result = OrientationSetting(direction, freeGroundAxis);
+                result = gyroController.AlignToGround(direction, freeGroundAxis);
             }
             return result;
         }
@@ -493,131 +176,24 @@ namespace IngameScript
             SwitchDampener(false);
             var distance = direction.Length();
             var controlledSpeed =
-                distance < fittingDistance ? fittingSpeed :
-                distance < brakingDistance ? brakingSpeed :
-                distance < upRunningDistance ? upRunningSpeed : cruisingSpeed;
-            var clampedSpeed = Math.Max(fittingDistance, Math.Min(distance, controlledSpeed));
+                distance < FittingDistance ? FittingSpeed :
+                distance < BrakingDistance ? BrakingSpeed :
+                distance < UpRunningDistance ? UpRunningSpeed : CruisingSpeed;
+            var clampedSpeed = Math.Max(FittingDistance, Math.Min(distance, controlledSpeed));
             var targetVelocity = clampedSpeed * Vector3.Normalize(direction);
 
             Echo($"controlledSpeed: {controlledSpeed:f2}");
 
-            var gravity = GetGravityAsN() * antiGravityCoeff;
-            if (gravity.Length() < gravityMergin)
+            var gravity = cockpit.GetTotalGravity() * AntiGravityCoeff;
+            if (gravity.Length() < GravityMergin)
             {
-                Accelerate(targetVelocity, Vector3.Zero);
+                thrusterController.Accelerate(targetVelocity, Vector3.Zero);
             }
             else
             {
-                Accelerate(targetVelocity, gravity);
+                thrusterController.Accelerate(targetVelocity, gravity);
             }
             Stabilize();
-        }
-
-        private bool OrientationSetting(Vector3 direction, Vector3 groundAxis)
-        {
-            Quaternion shipRot = Quaternion.CreateFromRotationMatrix(cockpit.WorldMatrix);
-            groundAxis.Normalize();
-
-            // gravity alignment
-            var rollAxis = shipRot.Forward;
-            var pitchAxis = shipRot.Right;
-            var yawAxis = shipRot.Up;
-
-            var Erg = Vector3.Dot(pitchAxis, groundAxis) * pitchAxis + Vector3.Dot(yawAxis, groundAxis) * yawAxis;
-            var Epg = Vector3.Dot(rollAxis, groundAxis) * rollAxis + Vector3.Dot(yawAxis, groundAxis) * yawAxis;
-            Erg.Normalize();
-            Epg.Normalize();
-
-            var rollSignAxis = Vector3.Cross(groundAxis, shipRot.Forward);
-            var rollSign = -Math.Sign(Vector3.Dot(-shipRot.Up, rollSignAxis));
-            var rollAngleAbs = Math.Acos(Vector3.Dot(Erg, -shipRot.Up) / (Erg.Length() * groundAxis.Length()));
-
-            var pitchSignAxis = Vector3.Cross(groundAxis, shipRot.Right);
-            var pitchSign = -Math.Sign(Vector3.Dot(-shipRot.Up, pitchSignAxis));
-            var pitchAngleAbs = Math.Acos(Vector3.Dot(Epg, -shipRot.Up) / (Epg.Length() * groundAxis.Length()));
-
-            if (rotationPhase == RotationPhase.Neutral) // neutral
-            {
-                // choose more efficient rotation axis
-                rotationPhase = (groundAxis - Erg).Length() < (groundAxis - Epg).Length() ? RotationPhase.Pitch : RotationPhase.Roll;
-            }
-            else if (rotationPhase == 0) // rolling
-            {
-                DebugIndicate($"p[0]{rollAngleAbs:f3},  {pitchAngleAbs:f3}");
-
-                if (rollAngleAbs < rotationMergin)
-                {
-                    SetGyro(0, 0, 0);
-                    if (pitchAngleAbs < rotationMergin) rotationPhase = RotationPhase.Yaw;
-                    else rotationPhase = RotationPhase.Pitch;
-                }
-                else
-                {
-                    SetGyro(rollSign * rollAngleAbs, 0, 0);
-                }
-            }
-            else if (rotationPhase == RotationPhase.Pitch) // pitch
-            {
-                //DebugIndicate($"p[0]{rollAngleAbs:f3},  {pitchAngleAbs:f3}");
-
-                if (pitchAngleAbs < rotationMergin)
-                {
-                    SetGyro(0, 0, 0);
-                    if (rollAngleAbs < rotationMergin) rotationPhase = RotationPhase.Yaw;
-                    else rotationPhase = RotationPhase.Roll;
-                }
-                else
-                {
-                    SetGyro(0, pitchSign * pitchAngleAbs, 0);
-                }
-            }
-            else if (rotationPhase == RotationPhase.Yaw)
-            {
-                // othogonalization by removing groundAxis-component
-
-                if (direction.Length() < reachConstant)
-                {
-                    SetGyro(0, 0, 0);
-                    FreeGyro();
-                    return true;
-                }
-                //Echo($"reach phase 2 {direction.Length():f2}");
-
-                var ndir = Vector3D.Normalize(direction);
-                var groundComponent = Vector3D.Dot(groundAxis, direction);
-                var groundPlaneDirection = direction - (float)groundComponent * groundAxis;
-                if (groundPlaneDirection.Length() < reachConstant)
-                {
-                    SetGyro(0, 0, 0);
-                    FreeGyro();
-                    return true;
-                }
-
-                groundPlaneDirection.Normalize();
-
-                var yawSignAxis = Vector3.Cross(groundPlaneDirection, shipRot.Up);
-                var yawSign = Math.Sign(Vector3.Dot(yawSignAxis, shipRot.Forward));
-                var yawAngleAbs = Math.Acos(Vector3.Dot(groundPlaneDirection, shipRot.Forward) / (groundPlaneDirection.Length() * shipRot.Forward.Length()));
-
-                DebugIndicate($"p[2]{rollAngleAbs:f3} , {pitchAngleAbs:f3},  {yawAngleAbs:f3}");
-
-                // check gravity instability
-                if (pitchAngleAbs >= rotationMergin || rollAngleAbs >= rotationMergin)
-                {
-                    rotationPhase = pitchAngleAbs > rollAngleAbs ? RotationPhase.Pitch : RotationPhase.Roll;
-                }
-                else if (yawAngleAbs < rotationMergin) // oriantation setting was completed
-                {
-                    SetGyro(0, 0, 0);
-                    FreeGyro();
-                    return true;
-                }
-                else
-                {
-                    SetGyro(0, 0, yawSign * yawAngleAbs);
-                }
-            }
-            return false;
         }
 
         private void InitializaCache()
@@ -626,6 +202,11 @@ namespace IngameScript
             GridTerminalSystem.GetBlocks(blocks);
             // retrieve and caching thrusters and a cockpit
 
+            List<IMyGyro> gyros = new List<IMyGyro>();
+            List<IMyThrust> thrusters = new List<IMyThrust>();
+            List<IMyThrust> atmosphericThrusters = new List<IMyThrust>();
+            List<IMyThrust> hydrogenThrusters = new List<IMyThrust>();
+            List<IMyThrust> ionThrusters = new List<IMyThrust>();
             foreach (var block in blocks)
             {
                 if (block.CustomName.Contains("Thruster"))
@@ -645,12 +226,12 @@ namespace IngameScript
                         ionThrusters.Add(thr);
                     }
                 }
-                if (block.CustomName.Contains(cockpitName))
+                if (block.CustomName.Contains(CockpitName))
                 {
                     var temp_cock = block as IMyCockpit;
                     cockpit = temp_cock;
                 }
-                if (block.CustomName.Contains(controlSeatName))
+                if (block.CustomName.Contains(ControlSeatName))
                 {
                     if (cockpit == null)
                     {
@@ -658,11 +239,11 @@ namespace IngameScript
                         cockpit = temp_cock;
                     }
                 }
-                if (block.CustomName.Contains(gyroName))
+                if (block.CustomName.Contains(GyroName))
                 {
                     gyros.Add(block as IMyGyro);
                 }
-                if (block.CustomName.Contains(remoteControlName))
+                if (block.CustomName.Contains(RemoteControlName))
                 {
 
                     remoteControl = block as IMyRemoteControl;
@@ -681,21 +262,18 @@ namespace IngameScript
                 {
                     debugAnntena = block as IMyRadioAntenna;
                 }
-                if (block.CustomName.Contains(mainConnectorName))
+                if (block.CustomName.Contains(MainConnectorName))
                 {
                     mainConnector = block as IMyShipConnector;
                 }
-                if (block.CustomName.Contains(programmableBlockName))
+                if (block.CustomName.Contains(ProgrammableBlockName))
                 {
                     programmableBlock = block as IMyProgrammableBlock;
                 }
             }
 
-            // calculate CockpitOrientedDirection
-            InitializeDirectionOfThrusters();
-
             // recorder
-            var tankGroup = GridTerminalSystem.GetBlockGroupWithName(hydrogenTankGroupName);
+            var tankGroup = GridTerminalSystem.GetBlockGroupWithName(HydrogenTankGroupName);
             blocks.Clear();
             if (tankGroup != null)
             {
@@ -706,20 +284,14 @@ namespace IngameScript
                 }
                 recorder = new FlightRecorder(tanks);
             }
+
+            // controller initialization
+            gyroController = new GyroController(GridTerminalSystem, cockpit, gyros);
+            thrusterController = new ThrusterController(GridTerminalSystem, cockpit, atmosphericThrusters, hydrogenThrusters, ionThrusters);
         }
 
         public void Main(string argument, UpdateType updateSource)
         {
-            // The main entry point of the script, invoked every time
-            // one of the programmable block's Run actions are invoked,
-            // or the script updates itself. The updateSource argument
-            // describes where the update came from. Be aware that the
-            // updateSource is a  bitfield  and might contain more than
-            // one update type.
-            //
-            // The method itself is required, but the arguments above
-            // can be removed if not needed.
-
             Echo("current mode:" + mode.ToString());
             if (cockpit != null)
             {
@@ -730,10 +302,11 @@ namespace IngameScript
             {
                 InitializaCache();
                 mode = InertiaAutoPilotMode.OrientationSetting;
-                shipMass = cockpit.CalculateShipMass().TotalMass;
-                AutoSwitchThruster();
-                FreeGyro();
-                FreeAllThruster();
+                
+                thrusterController.AutoSwitchThruster();
+                gyroController.FreeGyro();
+
+                thrusterController.FreeAllThruster();
                 SwitchDampener(true);
                 //StartAutomaticConnection(); // debug
             }
@@ -745,8 +318,9 @@ namespace IngameScript
             else if (mode == InertiaAutoPilotMode.Idling)
             {
                 SwitchDampener(true);
-                FreeGyro();
-                FreeAllThruster();
+
+                gyroController.FreeGyro();
+                thrusterController.FreeAllThruster();
             }
             else if (mode == InertiaAutoPilotMode.OrientationSetting)
             {
@@ -758,9 +332,9 @@ namespace IngameScript
             else if (mode == InertiaAutoPilotMode.Cruising)
             {
                 var direction = GetDirection();
-                if (direction.Length() <= reachConstant)
+                if (direction.Length() <= ReachConstant)
                 {
-                    if (cockpit.GetShipVelocities().LinearVelocity.Length() < stoppingSpeed)
+                    if (cockpit.GetShipVelocities().LinearVelocity.Length() < StoppingSpeed)
                     {
                         currentWaypointIndex++;
                         if (currentWaypointIndex < waypoints.Count)
@@ -807,7 +381,7 @@ namespace IngameScript
                         Echo($"cock: {StringHelper.VectorStringify(cockpit.GetPosition())} con: {StringHelper.VectorStringify(mainConnector.GetPosition())}");
                         var offsetDir = targetConnector.approachOffset - mainConnector.GetPosition();
                         Move(offsetDir);
-                        if (offsetDir.Length() <= reachConstant)
+                        if (offsetDir.Length() <= ReachConstant)
                         {
                             autoConnectionPhase = AutoConnectionPhase.FittingConnector;
                         }
@@ -824,7 +398,7 @@ namespace IngameScript
                     default: break;
                 }
             }
-            AutoSwitchThruster();
+            thrusterController.AutoSwitchThruster();
             client.UpdateClient();
 
             if (recordCounter-- <= 0)
@@ -832,6 +406,395 @@ namespace IngameScript
                 //recordCounter = recordInterval;
                 //recorder.Record();
                 programmableBlock?.GetSurface(0).WriteText(recorder.ToString());
+            }
+        }
+
+        public class ThrusterController
+        {
+            // constants
+            readonly float ReactionConstant = 0.8f;
+            readonly float CutoffEfficiency = 0.3f;
+
+            // Interface caches
+            private IMyGridTerminalSystem gts;
+            private IMyCockpit cockpit;
+            private List<IMyThrust> thrusters = new List<IMyThrust>();
+            private List<IMyThrust> atmosphericThrusters = new List<IMyThrust>();
+            private List<IMyThrust> hydrogenThrusters = new List<IMyThrust>();
+            private List<IMyThrust> ionThrusters = new List<IMyThrust>();
+            private List<IMyThrust> activeThrusters = new List<IMyThrust>();
+
+            // calculation caching
+            // If cockpit.Orientation.Forward != Base6Direction.Direction.Forward, this ship goes wrong directions.
+            // We use the map to solve this problem.
+            private Dictionary<IMyThrust, Base6Directions.Direction> thruster2direction = new Dictionary<IMyThrust, Base6Directions.Direction>();
+            private float shipMass;
+
+            public ThrusterController(
+                IMyGridTerminalSystem _gts,
+                IMyCockpit _cockpit,
+                List<IMyThrust> atmosphericThrusters,
+                List<IMyThrust> hydrogenThrusters,
+                List<IMyThrust> ionThrusters)
+            {
+                this.gts = _gts;
+                this.cockpit = _cockpit;
+                shipMass = cockpit.CalculateShipMass().TotalMass;
+
+                thrusters = atmosphericThrusters.Concat(hydrogenThrusters).Concat(ionThrusters).ToList();
+                this.atmosphericThrusters = atmosphericThrusters;
+                this.hydrogenThrusters = hydrogenThrusters;
+                this.ionThrusters = ionThrusters;
+
+                InitializeDirectionOfThrusters();
+            }
+
+            public void Accelerate(Vector3 targetVelocity, Vector3 gravity)
+            {
+                // 6-maximum force calculation
+                // calculation thruster unit count (large thruster = n * small thruster)
+                Dictionary<Base6Directions.Direction, float> maxF = new Dictionary<Base6Directions.Direction, float>();
+                Dictionary<Base6Directions.Direction, int> units = new Dictionary<Base6Directions.Direction, int>();
+                Dictionary<Base6Directions.Direction, List<IMyThrust>> thrusterDict = new Dictionary<Base6Directions.Direction, List<IMyThrust>>();
+                Dictionary<IMyThrust, float> assignWeight = new Dictionary<IMyThrust, float>();
+                for (int i = 0; i <= (int)Base6Directions.Direction.Down; i++)
+                {
+                    maxF[(Base6Directions.Direction)i] = 0;
+                    units[(Base6Directions.Direction)i] = 0;
+                    thrusterDict.Add((Base6Directions.Direction)i, new List<IMyThrust>());
+                }
+                foreach (var thr in activeThrusters)
+                {
+                    if (thr.IsWorking)
+                    {
+                        var dir = thruster2direction[thr];
+
+                        // map to relative direction6
+                        maxF[dir] += thr.MaxEffectiveThrust;
+                        thrusterDict[dir].Add(thr);
+
+                        //Echo($"{dir.ToString()}: {thr.CustomName}");
+                    }
+                }
+
+                // calculate target force using kinematic equation considering gravity
+                var shipRot = Quaternion.CreateFromRotationMatrix(cockpit.WorldMatrix);
+                var currentVelocity = cockpit.GetShipVelocities().LinearVelocity;
+                var relative = targetVelocity - currentVelocity;
+
+                //DebugIndicate(relative, "re;");
+                //DebugIndicate(currentVelocity, "cV;");
+
+                var accelerateForce = (relative / ReactionConstant) * shipMass; // F = ma
+                var gravityForce = -gravity * shipMass;
+
+                // calculate anti-gravity force components(anti-gravity force is more important than acceleration)
+                Vector3[] axises = new Vector3[]
+                {
+                    Vector3.Forward, Vector3.Backward,
+                    Vector3.Left, Vector3.Right,
+                    Vector3.Up, Vector3.Down
+                };
+                var leftMaxF = new Dictionary<Base6Directions.Direction, float>();
+                Dictionary<Base6Directions.Direction, float> components = new Dictionary<Base6Directions.Direction, float>();
+                var localGravityForce = Vector3.Transform(gravityForce, Quaternion.Inverse(shipRot));
+                float antiGravityGiveUpRatio = 1f;
+
+                for (int i = 0; i <= (int)Base6Directions.Direction.Down; i++)
+                {
+                    var dir = (Base6Directions.Direction)i;
+                    var axis = axises[i];
+                    var component = Vector3.Dot(axis, localGravityForce);
+                    if (component <= 0) continue;
+                    antiGravityGiveUpRatio = Math.Min(maxF[dir] / component, antiGravityGiveUpRatio);
+                }
+                var targetGravityForce = localGravityForce * antiGravityGiveUpRatio;
+                for (int i = 0; i <= (int)Base6Directions.Direction.Down; i++)
+                {
+                    var dir = (Base6Directions.Direction)i;
+                    var axis = axises[i];
+                    components[dir] = Math.Max(Vector3.Dot(axis, targetGravityForce), 0);
+                    leftMaxF[dir] = maxF[dir] - components[dir];
+                }
+
+                //DebugIndicate(localGravityForce, $"giv:{antiGravityGiveUpRatio} g:");
+
+                // calculate accelerate force components
+                var giveUpRatio = 1f;
+                var localAccelerateForce = Vector3.Transform(accelerateForce, Quaternion.Inverse(shipRot));// localize targetForce
+                for (int i = 0; i <= (int)Base6Directions.Direction.Down; i++)
+                {
+                    var dir = (Base6Directions.Direction)i;
+                    var axis = axises[i];
+                    var component = Vector3.Dot(axis, localAccelerateForce);
+                    if (component <= 0) continue;
+                    giveUpRatio = Math.Min(leftMaxF[dir] / component, giveUpRatio);
+                }
+                var targetAccelerateForce = localAccelerateForce * giveUpRatio;
+
+                //DebugIndicate(accelerateForce, $"giv:{giveUpRatio} aF:");
+                //DebugIndicate(targetAccelerateForce, $"giv:{giveUpRatio} tAF:");
+
+                for (int i = 0; i <= (int)Base6Directions.Direction.Down; i++)
+                {
+                    var dir = (Base6Directions.Direction)i;
+                    var axis = axises[i];
+                    components[dir] += Math.Max(Vector3.Dot(axis, targetAccelerateForce), 0);
+                }
+
+                //Echo($"mass: {shipMass}kg");
+                // force assignment
+                for (int i = 0; i <= (int)Base6Directions.Direction.Down; i++)
+                {
+                    var dir = (Base6Directions.Direction)i;
+                    //var forcePerUnit = components[dir] / units[dir];
+                    foreach (var thr in thrusterDict[dir])
+                    {
+                        //Echo(thr.CustomName + ";" +
+                        //    "; fPU" + units[dir].ToString("f2") +
+                        //    "; comp; " + components[dir]);
+                        //thr.ThrustOverride = forcePerUnit;
+
+                        // balanced assignment
+                        thr.ThrustOverride = components[dir] * (thr.MaxEffectiveThrust / maxF[dir]);
+                    }
+                }
+            }
+
+            public void AutoSwitchThruster()
+            {
+                activeThrusters.Clear();
+
+                // about atmospheric trusters
+                foreach (var thr in atmosphericThrusters)
+                {
+                    //Echo($"{thr.CustomName}: {(thr.MaxEffectiveThrust / thr.MaxThrust)}({CutoffEfficiency})");
+                    if ((thr.MaxEffectiveThrust / thr.MaxThrust) < CutoffEfficiency)
+                    {
+                        thr.ThrustOverride = -1;
+                        thr.Enabled = false;
+                    }
+                    else
+                    {
+                        thr.Enabled = true;
+                        activeThrusters.Add(thr);
+                    }
+                }
+
+                // about hydrogen trusters
+                // if only atmospheric trusters can't lift ship, turn on hydrogen trusters
+                var lifableForce = shipMass * GetGravityAsN().Length();
+                var gravityAxis = Vector3.Normalize(cockpit.GetTotalGravity());
+                var totalLiftPower = 0f;
+                foreach (var thr in atmosphericThrusters)
+                {
+                    var rot = thr.WorldMatrix;
+                    var effectiveForce = Vector3.Transform(Vector3.Forward, Matrix.Invert(rot)) * thr.MaxEffectiveThrust;
+                    totalLiftPower += Vector3.Dot(-gravityAxis, effectiveForce);
+                }
+                //Echo($"lF: {lifableForce:f2}, tL: {totalLiftPower:f2}, en: {lifableForce <= totalLiftPower}");
+                if (lifableForce <= totalLiftPower) // capa
+                {
+                    foreach (var thr in hydrogenThrusters) thr.Enabled = true;
+                }
+                else // can't lift
+                {
+                    foreach (var thr in hydrogenThrusters) thr.Enabled = false;
+                }
+                activeThrusters.AddRange(hydrogenThrusters);
+            }
+
+            public void FreeAllThruster()
+            {
+                foreach (var thr in thrusters)
+                {
+                    if (thr.IsWorking)
+                    {
+                        thr.ThrustOverridePercentage = -1;
+                    }
+                }
+            }
+
+            private Vector3 GetGravityAsN()
+            {
+                return cockpit.GetTotalGravity();
+            }
+
+            private void InitializeDirectionOfThrusters()
+            {
+                var shipRot = Quaternion.CreateFromRotationMatrix(cockpit.WorldMatrix);
+                var shipForward = shipRot.Forward;
+                var shipRight = shipRot.Right;
+                var shipUp = shipRot.Up;
+
+                foreach (var thruster in thrusters)
+                {
+                    var thrusterRot = Quaternion.CreateFromRotationMatrix(thruster.WorldMatrix);
+                    var thrusterForward = thrusterRot.Forward;
+
+                    var forwardDot = Vector3.Dot(thrusterForward, shipForward);
+                    var rightDot = Vector3.Dot(thrusterForward, shipRight);
+                    var upDot = Vector3.Dot(thrusterForward, shipUp);
+
+                    // OMG code... this is OMG code. 
+                    if (forwardDot > 0.9f) thruster2direction.Add(thruster, Base6Directions.Direction.Backward);
+                    if (forwardDot < -0.9f) thruster2direction.Add(thruster, Base6Directions.Direction.Forward);
+                    if (rightDot > 0.9f) thruster2direction.Add(thruster, Base6Directions.Direction.Left);
+                    if (rightDot < -0.9f) thruster2direction.Add(thruster, Base6Directions.Direction.Right);
+                    if (upDot > 0.9f) thruster2direction.Add(thruster, Base6Directions.Direction.Down);
+                    if (upDot < -0.9f) thruster2direction.Add(thruster, Base6Directions.Direction.Up);
+                }
+            }
+        }
+
+        public class GyroController
+        {
+            // constants
+            readonly float RotationMergin = 0.07f;
+            readonly float GyroSensitivity = 1.5f;
+            readonly float ReachConstant = 2.0f; // stoppingRange
+
+            // interface cache
+            private List<IMyGyro> gyros = new List<IMyGyro>();
+            private IMyCockpit cockpit;
+
+            // state
+            private RotationPhase rotationPhase = RotationPhase.Neutral;
+
+            enum RotationPhase
+            {
+                Roll, Pitch, Yaw, Neutral
+            }
+
+            public GyroController(IMyGridTerminalSystem _gts, IMyCockpit _cockpit, List<IMyGyro> _gyros)
+            {
+                this.gyros = _gyros;
+                this.cockpit = _cockpit;
+            }
+
+            public bool AlignToGround(Vector3 direction, Vector3 groundAxis)
+            {
+                Quaternion shipRot = Quaternion.CreateFromRotationMatrix(cockpit.WorldMatrix);
+                groundAxis.Normalize();
+
+                // gravity alignment
+                var rollAxis = shipRot.Forward;
+                var pitchAxis = shipRot.Right;
+                var yawAxis = shipRot.Up;
+
+                var Erg = Vector3.Dot(pitchAxis, groundAxis) * pitchAxis + Vector3.Dot(yawAxis, groundAxis) * yawAxis;
+                var Epg = Vector3.Dot(rollAxis, groundAxis) * rollAxis + Vector3.Dot(yawAxis, groundAxis) * yawAxis;
+                Erg.Normalize();
+                Epg.Normalize();
+
+                var rollSignAxis = Vector3.Cross(groundAxis, shipRot.Forward);
+                var rollSign = -Math.Sign(Vector3.Dot(-shipRot.Up, rollSignAxis));
+                var rollAngleAbs = Math.Acos(Vector3.Dot(Erg, -shipRot.Up) / (Erg.Length() * groundAxis.Length()));
+
+                var pitchSignAxis = Vector3.Cross(groundAxis, shipRot.Right);
+                var pitchSign = -Math.Sign(Vector3.Dot(-shipRot.Up, pitchSignAxis));
+                var pitchAngleAbs = Math.Acos(Vector3.Dot(Epg, -shipRot.Up) / (Epg.Length() * groundAxis.Length()));
+
+                if (rotationPhase == RotationPhase.Neutral) // neutral
+                {
+                    // choose more efficient rotation axis
+                    rotationPhase = (groundAxis - Erg).Length() < (groundAxis - Epg).Length() ? RotationPhase.Pitch : RotationPhase.Roll;
+                }
+                else if (rotationPhase == RotationPhase.Roll) // rolling
+                {
+                    //DebugIndicate($"p[0]{rollAngleAbs:f3},  {pitchAngleAbs:f3}");
+
+                    if (rollAngleAbs < RotationMergin)
+                    {
+                        SetGyro(0, 0, 0);
+                        if (pitchAngleAbs < RotationMergin) rotationPhase = RotationPhase.Yaw;
+                        else rotationPhase = RotationPhase.Pitch;
+                    }
+                    else
+                    {
+                        SetGyro(rollSign * rollAngleAbs, 0, 0);
+                    }
+                }
+                else if (rotationPhase == RotationPhase.Pitch) // pitch
+                {
+                    //DebugIndicate($"p[0]{rollAngleAbs:f3},  {pitchAngleAbs:f3}");
+
+                    if (pitchAngleAbs < RotationMergin)
+                    {
+                        SetGyro(0, 0, 0);
+                        if (rollAngleAbs < RotationMergin) rotationPhase = RotationPhase.Yaw;
+                        else rotationPhase = RotationPhase.Roll;
+                    }
+                    else
+                    {
+                        SetGyro(0, pitchSign * pitchAngleAbs, 0);
+                    }
+                }
+                else if (rotationPhase == RotationPhase.Yaw)
+                {
+                    // othogonalization by removing groundAxis-component
+
+                    if (direction.Length() < ReachConstant)
+                    {
+                        SetGyro(0, 0, 0);
+                        FreeGyro();
+                        return true;
+                    }
+                    //Echo($"reach phase 2 {direction.Length():f2}");
+
+                    var ndir = Vector3D.Normalize(direction);
+                    var groundComponent = Vector3D.Dot(groundAxis, direction);
+                    var groundPlaneDirection = direction - (float)groundComponent * groundAxis;
+                    if (groundPlaneDirection.Length() < ReachConstant)
+                    {
+                        SetGyro(0, 0, 0);
+                        FreeGyro();
+                        return true;
+                    }
+
+                    groundPlaneDirection.Normalize();
+
+                    var yawSignAxis = Vector3.Cross(groundPlaneDirection, shipRot.Up);
+                    var yawSign = Math.Sign(Vector3.Dot(yawSignAxis, shipRot.Forward));
+                    var yawAngleAbs = Math.Acos(Vector3.Dot(groundPlaneDirection, shipRot.Forward) / (groundPlaneDirection.Length() * shipRot.Forward.Length()));
+
+                    // check gravity instability
+                    if (pitchAngleAbs >= RotationMergin || rollAngleAbs >= RotationMergin)
+                    {
+                        rotationPhase = pitchAngleAbs > rollAngleAbs ? RotationPhase.Pitch : RotationPhase.Roll;
+                    }
+                    else if (yawAngleAbs < RotationMergin) // oriantation setting was completed
+                    {
+                        SetGyro(0, 0, 0);
+                        FreeGyro();
+                        return true;
+                    }
+                    else
+                    {
+                        SetGyro(0, 0, yawSign * yawAngleAbs);
+                    }
+                }
+                return false;
+            }
+
+            public void FreeGyro()
+            {
+                foreach (var gyro in gyros)
+                {
+                    gyro.GyroOverride = false;
+                }
+            }
+
+            private void SetGyro(double roll, double pitch, double yaw)
+            {
+                // TODO: multi-direction gyroscopes
+                foreach (var gyro in gyros)
+                {
+                    gyro.GyroOverride = true;
+                    gyro.Roll = (float)roll * GyroSensitivity;
+                    gyro.Pitch = (float)pitch * GyroSensitivity;
+                    gyro.Yaw = (float)yaw * GyroSensitivity;
+                }
             }
         }
 
@@ -848,16 +811,6 @@ namespace IngameScript
             public List<ConnectorInfo> KnownInfos => knownInfos;
             public ConnectorClient(IMyIntergridCommunicationSystem IGC)
             {
-                // The constructor, called only once every session and
-                // always before any other method is called. Use it to
-                // initialize your script.
-                //
-                // The constructor is optional and can be removed if not
-                // needed.
-                //
-                // It's recommended to set Runtime.UpdateFrequency
-                // here, which will allow your script to run itself without a
-                // timer block.
                 this.IGC = IGC;
                 IGC.RegisterBroadcastListener(ConnectorInfo.ResponseTag);
             }
@@ -870,19 +823,6 @@ namespace IngameScript
 
             public void UpdateClient()
             {
-                // The main entry point of the script, invoked every time
-                // one of the programmable block's Run actions are invoked,
-                // or the script updates itself. The updateSource argument
-                // describes where the update came from. Be aware that the
-                // updateSource is a  bitfield  and might contain more than
-                // one update type.
-                //
-                // The method itself is required, but the arguments above
-                // can be removed if not needed.
-
-                //List<IMyBroadcastListener> listener = new List<IMyBroadcastListener>();
-                //IGC.GetBroadcastListeners(listener);
-
                 if (Requesting)
                 {
                     IMyUnicastListener listener = IGC.UnicastListener;
@@ -976,7 +916,6 @@ namespace IngameScript
             }
         };
 
-
         public static class StringHelper
         {
             public static string MessageStringify(MyIGCMessage message)
@@ -1022,7 +961,6 @@ namespace IngameScript
             }
         }
 
-
         // Ship Status Recorder
         public class FlightRecorder
         {
@@ -1063,7 +1001,6 @@ namespace IngameScript
                 return str;
             }
         }
-
 
         public class FlightRecordEntry
         {

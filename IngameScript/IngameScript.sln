@@ -5,6 +5,15 @@ VisualStudioVersion = 16.0.33027.164
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LCDBatteryChecker", "LCDBatteryChecker\LCDBatteryChecker.csproj", "{8CD3992D-571C-444C-8DB4-BD62C3DBE7A7}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{DCCD4BAB-0E7C-4EAF-B9D3-535EA86CB712}"
+	ProjectSection(SolutionItems) = preProject
+		..\README.md = ..\README.md
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InventoryStatusPresenter", "InventoryStatusPresenter\InventoryStatusPresenter.csproj", "{6E2B0A04-E460-4B61-9268-E95CFBB3F117}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutopilotBasic", "AutopilotBasic\AutopilotBasic.csproj", "{45B476F4-7387-4E7E-9D6F-86A5EE608FDD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -12,6 +21,10 @@ Global
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{8CD3992D-571C-444C-8DB4-BD62C3DBE7A7}.Debug|x64.ActiveCfg = Debug|x64
 		{8CD3992D-571C-444C-8DB4-BD62C3DBE7A7}.Debug|x64.Build.0 = Debug|x64
+		{6E2B0A04-E460-4B61-9268-E95CFBB3F117}.Debug|x64.ActiveCfg = Debug|x64
+		{6E2B0A04-E460-4B61-9268-E95CFBB3F117}.Debug|x64.Build.0 = Debug|x64
+		{45B476F4-7387-4E7E-9D6F-86A5EE608FDD}.Debug|x64.ActiveCfg = Debug|x64
+		{45B476F4-7387-4E7E-9D6F-86A5EE608FDD}.Debug|x64.Build.0 = Debug|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
