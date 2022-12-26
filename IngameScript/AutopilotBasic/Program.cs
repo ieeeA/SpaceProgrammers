@@ -48,17 +48,7 @@ namespace IngameScript
 
         // constant value
         readonly float ReachConstant = 2.0f; // stoppingRange
-        readonly float AntiGravityCoeff = 1.1f;
-        readonly float GravityMergin = 0.05f;
-        readonly float UpRunningDistance = 1000f;
-        readonly float BrakingDistance = 100f;
-        readonly float BrakingSpeed = 5f;
-        readonly float FittingDistance = 1f;
-        readonly float FittingSpeed = 2f;
-        readonly float UpRunningSpeed = 40f;
         readonly float StoppingSpeed = 1f;
-        readonly float CruisingSpeed = 98f;
-        readonly float EPS = 0.001f;
 
         readonly string ProgrammableBlockName = "Programmable block";
         readonly string MainConnectorName = "Connector";
