@@ -45,6 +45,7 @@ namespace IngameScript
         GyroController gyroController = null;
         ThrusterController thrusterController = null;
         FlightController flightController = null;
+        AutomaticConnectionManager connectionManager = null;
 
         // constant value
         readonly float ReachConstant = 2.0f; // stoppingRange
@@ -58,11 +59,14 @@ namespace IngameScript
         readonly string GyroName = "Gyro";
         readonly string RemoteControlName = "Remote";
 
+        readonly string StartCruiseCommand = "StartCruise";
+        readonly string StopCommand = "Stop";
+
         // state value
         InertiaAutoPilotMode mode = InertiaAutoPilotMode.Initial;
         AutoConnectionPhase autoConnectionPhase = AutoConnectionPhase.RequestingConnectorInfo;
 
-        //Vector3D currentDestination;
+        Vector3D currentDestination;
         ConnectorInfo targetConnector;
 
         int currentWaypointIndex = 0;
@@ -104,6 +108,11 @@ namespace IngameScript
             client.TryToGetConnectorInfo(mainConnector.GetPosition());
         }
 
+        private Vector3 GetDirection()
+        {
+            return currentDestination - cockpit.GetPosition();
+        }
+
         private void InitializaCache()
         {
             List<IMyTerminalBlock> blocks = new List<IMyTerminalBlock>();
@@ -115,7 +124,6 @@ namespace IngameScript
             List<IMyThrust> atmosphericThrusters = new List<IMyThrust>();
             List<IMyThrust> hydrogenThrusters = new List<IMyThrust>();
             List<IMyThrust> ionThrusters = new List<IMyThrust>();
-            Vector3 currentDestination = Vector3.Zero;
             foreach (var block in blocks)
             {
                 if (block.CustomName.Contains("Thruster"))
@@ -199,7 +207,7 @@ namespace IngameScript
             gyroController = new GyroController(GridTerminalSystem, cockpit, gyros);
             thrusterController = new ThrusterController(GridTerminalSystem, cockpit, atmosphericThrusters, hydrogenThrusters, ionThrusters);
             flightController = new FlightController(GridTerminalSystem, cockpit, thrusterController, gyroController, this);
-            flightController.SetTargetDestination(currentDestination);
+            connectionManager = new AutomaticConnectionManager(GridTerminalSystem, cockpit, mainConnector, flightController, client, this);
         }
 
         public void Main(string argument, UpdateType updateSource)
@@ -216,11 +224,7 @@ namespace IngameScript
                 mode = InertiaAutoPilotMode.OrientationSetting;
 
                 thrusterController.AutoSwitchThruster();
-                gyroController.FreeGyro();
-
-                thrusterController.FreeAllThruster();
-                flightController.SwitchDampener(true);
-                //StartAutomaticConnection(); // debug
+                flightController.FreeFunctionalBlocks();
             }
             else if (mode == InertiaAutoPilotMode.TakeOff)
             {
@@ -229,20 +233,18 @@ namespace IngameScript
             }
             else if (mode == InertiaAutoPilotMode.Idling)
             {
-                flightController.SwitchDampener(true);
-                gyroController.FreeGyro();
-                thrusterController.FreeAllThruster();
+                flightController.FreeFunctionalBlocks();
             }
             else if (mode == InertiaAutoPilotMode.OrientationSetting)
             {
-                if (flightController.Stabilize())
+                if (flightController.Stabilize(GetDirection()))
                 {
                     mode = InertiaAutoPilotMode.Cruising;
                 }
             }
             else if (mode == InertiaAutoPilotMode.Cruising)
             {
-                var direction = flightController.GetDirection();
+                var direction = GetDirection();
                 if (direction.Length() <= ReachConstant)
                 {
                     if (cockpit.GetShipVelocities().LinearVelocity.Length() < StoppingSpeed)
@@ -251,7 +253,6 @@ namespace IngameScript
                         if (currentWaypointIndex < waypoints.Count)
                         {
                             var currentDestination = waypoints[currentWaypointIndex].Coords;
-                            flightController.SetTargetDestination(currentDestination);
                             mode = InertiaAutoPilotMode.OrientationSetting;
                         }
                         else
@@ -265,81 +266,35 @@ namespace IngameScript
             }
             else if (mode == InertiaAutoPilotMode.AutoConnection)
             {
-                Echo($"con phase: {autoConnectionPhase}");
-                switch (autoConnectionPhase)
-                {
-                    case AutoConnectionPhase.RequestingConnectorInfo:
-                        if (client.Finished && 0 < client.KnownInfos.Count)
-                        {
-                            var infos = client.KnownInfos;
-                            targetConnector = infos[0];
-                            foreach (var i in client.KnownInfos)
-                            {
-                                // get nearest connectable connector
-                                if ((targetConnector.position - mainConnector.GetPosition()).Length() >
-                                    (i.position - mainConnector.GetPosition()).Length())
-                                {
-                                    targetConnector = i;
-                                }
-                            }
-                            autoConnectionPhase = AutoConnectionPhase.ApproachOffset;
-                        }
-                        else if (client.Finished) // there is no connectable connector
-                        {
-                            mode = InertiaAutoPilotMode.Idling;
-                        }
-                        break;
-                    case AutoConnectionPhase.ApproachOffset:
-                        Echo($"cock: {StringHelper.VectorStringify(cockpit.GetPosition())} con: {StringHelper.VectorStringify(mainConnector.GetPosition())}");
-                        var offsetDir = targetConnector.approachOffset - mainConnector.GetPosition();
-                        flightController.Move(offsetDir);
-                        if (offsetDir.Length() <= ReachConstant)
-                        {
-                            autoConnectionPhase = AutoConnectionPhase.FittingConnector;
-                        }
-                        break;
-                    case AutoConnectionPhase.FittingConnector:
-                        var dir = targetConnector.position - mainConnector.GetPosition();
-                        flightController.Move(dir);
-                        mainConnector.Connect();
-                        if (mainConnector.Status == MyShipConnectorStatus.Connected)
-                        {
-                            mode = InertiaAutoPilotMode.Idling;
-                        }
-                        break;
-                    default: break;
-                }
+                connectionManager.UpdateProtocol();   
             }
             thrusterController.AutoSwitchThruster();
             client.UpdateClient();
-
-            if (recordCounter-- <= 0)
-            {
-                //recordCounter = recordInterval;
-                //recorder.Record();
-                programmableBlock?.GetSurface(0).WriteText(recorder.ToString());
-            }
         }
+
 
         public class FlightController
         {
             // constant value
-            readonly float AntiGravityCoeff = 1.1f;
-            readonly float GravityMergin = 0.05f;
+            public readonly float AntiGravityCoeff = 1.1f;
+            public readonly float GravityMergin = 0.05f;
 
-            readonly float BrakingDistance = 100f;
-            readonly float BrakingSpeed = 5f;
+            public readonly float StoppingDistance = 2.0f; // stoppingRange
+            public readonly float StoppingSpeed = 1f;
 
-            readonly float FittingDistance = 1f;
-            readonly float FittingSpeed = 2f;
+            public readonly float BrakingDistance = 100f;
+            public readonly float BrakingSpeed = 5f;
 
-            readonly float UpRunningDistance = 1000f;
-            readonly float UpRunningSpeed = 40f;
+            public readonly float FittingDistance = 1f;
+            public readonly float FittingSpeed = 2f;
 
-            readonly float ApproachDistance = 1000f;
-            readonly float ApproachSpeed = 98f;
+            public readonly float UpRunningDistance = 1000f;
+            public readonly float UpRunningSpeed = 40f;
 
-            readonly float CruisingSpeed = 98f;
+            public readonly float ApproachDistance = 1000f;
+            public readonly float ApproachSpeed = 98f;
+
+            public readonly float CruisingSpeed = 98f;
 
             readonly float EPS = 0.001f;
 
@@ -349,19 +304,6 @@ namespace IngameScript
             private ThrusterController thrusterController;
             private GyroController gyroController;
             private Program program;
-
-            // state
-            private Vector3 currentDestination;
-            private CruisingTargetType currentTargetType;
-
-            public enum CruisingTargetType
-            {
-                None,
-                Approach,
-                Braking,
-                UpRunning,
-                Fitting,
-            }
 
             public FlightController(
                 IMyGridTerminalSystem _gts,
@@ -375,16 +317,11 @@ namespace IngameScript
                 this.thrusterController = thrusterController;
                 this.gyroController = gyroController;
                 this.program = program;
-
-                currentDestination = this.cockpit.GetPosition();
             }
 
-            public bool Stabilize()
+            public bool Stabilize(Vector3 direction)
             {
-                var direction = GetDirection();
                 var gravity = cockpit.GetTotalGravity();
-
-                bool result;
                 if (gravity.Length() > GravityMergin) // high-gravity environment
                 {
                     return gyroController.AlignToGround(direction, cockpit.GetTotalGravity());
@@ -409,38 +346,6 @@ namespace IngameScript
                 }
             }
 
-            public Vector3 GetDirection()
-            {
-                return currentDestination - cockpit.GetPosition();
-            }
-
-            public void SetTargetDestination(Vector3 destination, CruisingTargetType targetType = CruisingTargetType.Fitting)
-            {
-                this.currentDestination = destination;
-                this.currentTargetType = targetType;
-            }
-
-            public bool CheckTargetComplete()
-            {
-                var direction = GetDirection();
-                var distance = direction.Length();
-                CruisingTargetType distanceCondition =
-                    distance < FittingDistance ? CruisingTargetType.Fitting :
-                    distance < BrakingDistance ? CruisingTargetType.Braking :
-                    distance < UpRunningDistance ? CruisingTargetType.UpRunning :
-                    distance < ApproachDistance ? CruisingTargetType.Approach : CruisingTargetType.None;
-
-                var currentVelocity = cockpit.GetShipVelocities().LinearVelocity;
-                var speed = currentVelocity.Length();
-                CruisingTargetType speedCondition =
-                    speed < FittingSpeed ? CruisingTargetType.Fitting :
-                    speed < BrakingSpeed ? CruisingTargetType.Braking :
-                    speed < UpRunningSpeed ? CruisingTargetType.UpRunning :
-                    speed < ApproachSpeed ? CruisingTargetType.Approach : CruisingTargetType.None;
-
-                return currentTargetType <= distanceCondition && currentTargetType <= speedCondition; 
-            }
-
             public void Move(Vector3 direction)
             {
                 SwitchDampener(false);
@@ -463,12 +368,19 @@ namespace IngameScript
                 {
                     thrusterController.Accelerate(targetVelocity, gravity);
                 }
-                Stabilize();
+                Stabilize(direction);
             }
 
             public void SwitchDampener(bool active)
             {
                 cockpit.DampenersOverride = active;
+            }
+
+            public void FreeFunctionalBlocks()
+            {
+                gyroController.FreeGyro();
+                thrusterController.FreeAllThruster();
+                SwitchDampener(true);
             }
         }
 
@@ -861,6 +773,104 @@ namespace IngameScript
             }
         }
 
+        public class AutomaticConnectionManager
+        {
+            // interface cache
+            private IMyGridTerminalSystem gts;
+            private IMyCockpit cockpit;
+            private FlightController flightController;
+            private ConnectorClient client;
+            private IMyShipConnector mainConnector;
+            private Program program;
+
+            // state
+            private AutoConnectionPhase autoConnectionPhase;
+            private ConnectorInfo targetConnector;
+            private bool workInProgress = false;
+
+            enum AutoConnectionPhase
+            {
+                RequestingConnectorInfo, ApproachOffset, FittingConnector
+            }
+
+            public AutomaticConnectionManager(
+                IMyGridTerminalSystem gts,
+                IMyCockpit cockpit,
+                IMyShipConnector mainConnector,
+                FlightController flightController,
+                ConnectorClient client,
+                Program program)
+            {
+                this.gts = gts;
+                this.cockpit = cockpit;
+                this.mainConnector = mainConnector;
+                this.flightController = flightController;
+                this.client = client;
+                this.program = program;
+            }
+
+            public void StartProtocol()
+            {
+                autoConnectionPhase = AutoConnectionPhase.RequestingConnectorInfo;
+                client.TryToGetConnectorInfo(cockpit.GetPosition());
+                workInProgress = true;
+            }
+
+            public void UpdateProtocol()
+            {
+                program.Echo($"Connection Phase: {autoConnectionPhase}");
+                switch (autoConnectionPhase)
+                {
+                    case AutoConnectionPhase.RequestingConnectorInfo:
+                        if (client.Finished && 0 < client.KnownInfos.Count)
+                        {
+                            var infos = client.KnownInfos;
+                            targetConnector = infos[0];
+                            foreach (var i in client.KnownInfos)
+                            {
+                                // get nearest connectable connector
+                                if ((targetConnector.position - mainConnector.GetPosition()).Length() >
+                                    (i.position - mainConnector.GetPosition()).Length())
+                                {
+                                    targetConnector = i;
+                                }
+                            }
+                            autoConnectionPhase = AutoConnectionPhase.ApproachOffset;
+                        }
+                        else if (client.Finished) // there is no connectable connector
+                        {
+                            workInProgress = false;
+                        }
+                        break;
+                    case AutoConnectionPhase.ApproachOffset:
+                        program.Echo($"cock: {StringHelper.VectorStringify(cockpit.GetPosition())} con: {StringHelper.VectorStringify(mainConnector.GetPosition())}");
+                        var offsetDir = targetConnector.approachOffset - mainConnector.GetPosition();
+                        flightController.Move(offsetDir);
+                        if (offsetDir.Length() <= flightController.StoppingDistance)
+                        {
+                            autoConnectionPhase = AutoConnectionPhase.FittingConnector;
+                        }
+                        break;
+                    case AutoConnectionPhase.FittingConnector:
+                        var dir = targetConnector.position - mainConnector.GetPosition();
+                        flightController.Move(dir);
+                        mainConnector.Connect();
+                        if (mainConnector.Status == MyShipConnectorStatus.Connected)
+                        {
+                            workInProgress = false;
+                        }
+                        break;
+                    default: break;
+                }
+            }
+
+            public bool CheckFinished()
+            {
+                // TODO implement
+                return workInProgress;
+            }
+        }
+
         public class ConnectorClient
         {
             // cache
@@ -911,7 +921,6 @@ namespace IngameScript
                 IGC.SendBroadcastMessage<string>(ConnectorInfo.RequestTag, "");
             }
         }
-
 
         // Tools for connector info communication
         public struct ConnectorInfo
