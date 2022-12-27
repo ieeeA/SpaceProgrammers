@@ -22,10 +22,14 @@ namespace IngameScript
     partial class Program : MyGridProgram
     {
         private readonly string ConnectorGroups = "ConnectorSys-Auto-#01";
+        private const float VerticalOffset = 10.0f;
+
 
         private List<IMyShipConnector> connectors = new List<IMyShipConnector>();
         private bool isInitialized = false;
 
+        private List<string> history = new List<string>();
+        
         public Program()
         {
             IGC.RegisterBroadcastListener(ConnectorInfo.RequestTag);
@@ -51,6 +55,7 @@ namespace IngameScript
             while (listeners[0].HasPendingMessage)
             {
                 var message = listeners[0].AcceptMessage();
+                history.Add(message.Tag + ":" + message.Data as string);
                 if (message.Tag == ConnectorInfo.RequestTag)
                 {
                     var availables = GetAvailableConnector();
@@ -86,11 +91,19 @@ namespace IngameScript
             {
                 Echo($"{con.CustomName}: {con.Status}");
             }
+
+            //foreach(var hi in history)
+            //{
+            //    Echo(hi);
+            //}
         }
 
         private string ConvertToMessage(List<IMyShipConnector> availables)
         {
-            return ConnectorInfo.StringifyList(availables.Select(c => new ConnectorInfo(c)).ToList());
+            return ConnectorInfo
+                .StringifyList(availables
+                                    .Select(c => new ConnectorInfo(c, VerticalOffset))
+                                    .ToList());
         }
 
         private List<IMyShipConnector> GetAvailableConnector()
@@ -112,12 +125,12 @@ namespace IngameScript
         public const string RequestTag = "RequestConnectorInfo";
         public const string ResponseTag = "ResponseConnectorInfo";
 
-        public ConnectorInfo(IMyShipConnector connector, Vector3 approachOffset)
+        public ConnectorInfo(IMyShipConnector connector, float verticalOffset)
         {
             name = connector.Name;
-            position = connector.Position;
+            position = connector.GetPosition();
             rotation = Quaternion.CreateFromRotationMatrix(connector.WorldMatrix);
-            this.approachOffset = approachOffset;
+            approachOffset = rotation.Forward * verticalOffset;
         }
 
         public ConnectorInfo(string cname, Vector3 cposition, Quaternion crot, Vector3 capproachOffset)

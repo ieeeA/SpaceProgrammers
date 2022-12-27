@@ -127,7 +127,7 @@ namespace IngameScript
         }
     }
 
-    #region 
+    #region dependency
     public class AirRoute
     {
         public readonly string name;
@@ -174,6 +174,13 @@ namespace IngameScript
             }
 
             return new AirRoute(name, list);
+        }
+
+        public static List<AirRoute> ParseBundle(string dataStr)
+        {
+            var t = dataStr;
+            var compStrs = t.Split('$');
+            return compStrs.Select(x => Parse(x)).ToList();
         }
     }
 

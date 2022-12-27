@@ -18,6 +18,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GuideStationManager", "Guid
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AirRouteRecorder", "AirRouteRecorder\AirRouteRecorder.csproj", "{2513D309-1EA5-4067-98BA-6895D693DD6F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TransporterAutopilotV0", "TransporterAutopilotV0\TransporterAutopilotV0.csproj", "{839B9644-A0E3-4476-8525-8BF08BC04F3D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -33,6 +35,8 @@ Global
 		{CCD4C110-F734-40E6-8D3E-8D55D52FB142}.Debug|x64.Build.0 = Debug|x64
 		{2513D309-1EA5-4067-98BA-6895D693DD6F}.Debug|x64.ActiveCfg = Debug|x64
 		{2513D309-1EA5-4067-98BA-6895D693DD6F}.Debug|x64.Build.0 = Debug|x64
+		{839B9644-A0E3-4476-8525-8BF08BC04F3D}.Debug|x64.ActiveCfg = Debug|x64
+		{839B9644-A0E3-4476-8525-8BF08BC04F3D}.Debug|x64.Build.0 = Debug|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
