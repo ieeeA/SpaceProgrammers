@@ -64,10 +64,8 @@ namespace IngameScript
 
         // state value
         InertiaAutoPilotMode mode = InertiaAutoPilotMode.Initial;
-        AutoConnectionPhase autoConnectionPhase = AutoConnectionPhase.RequestingConnectorInfo;
 
         Vector3D currentDestination;
-        ConnectorInfo targetConnector;
 
         int currentWaypointIndex = 0;
         int recordCounter = 0;
@@ -104,7 +102,6 @@ namespace IngameScript
         private void StartAutomaticConnection()
         {
             mode = InertiaAutoPilotMode.AutoConnection;
-            autoConnectionPhase = AutoConnectionPhase.RequestingConnectorInfo;
             client.TryToGetConnectorInfo(mainConnector.GetPosition());
         }
 
@@ -272,7 +269,6 @@ namespace IngameScript
             client.UpdateClient();
         }
 
-
         public class FlightController
         {
             // constant value
@@ -306,14 +302,14 @@ namespace IngameScript
             private Program program;
 
             public FlightController(
-                IMyGridTerminalSystem _gts,
-                IMyCockpit _cockpit,
+                IMyGridTerminalSystem gts,
+                IMyCockpit cockpit,
                 ThrusterController thrusterController,
                 GyroController gyroController,
                 Program program)
             {
-                this.gts = _gts;
-                this.cockpit = _cockpit;
+                this.gts = gts;
+                this.cockpit = cockpit;
                 this.thrusterController = thrusterController;
                 this.gyroController = gyroController;
                 this.program = program;
@@ -908,9 +904,6 @@ namespace IngameScript
                             if (message.Data is string)
                             {
                                 var str = message.Data as string;
-
-                                var vec = str.Split(';')[0].Split(':')[1].ToString();
-
                                 knownInfos = ConnectorInfo.ParseList(str);
                                 Finished = true;
                                 Requesting = false;

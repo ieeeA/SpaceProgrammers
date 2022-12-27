@@ -14,6 +14,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "InventoryStatusPresenter", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutopilotBasic", "AutopilotBasic\AutopilotBasic.csproj", "{45B476F4-7387-4E7E-9D6F-86A5EE608FDD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GuideStationManager", "GuideStationManager\GuideStationManager.csproj", "{CCD4C110-F734-40E6-8D3E-8D55D52FB142}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AirRouteRecorder", "AirRouteRecorder\AirRouteRecorder.csproj", "{2513D309-1EA5-4067-98BA-6895D693DD6F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -25,6 +29,10 @@ Global
 		{6E2B0A04-E460-4B61-9268-E95CFBB3F117}.Debug|x64.Build.0 = Debug|x64
 		{45B476F4-7387-4E7E-9D6F-86A5EE608FDD}.Debug|x64.ActiveCfg = Debug|x64
 		{45B476F4-7387-4E7E-9D6F-86A5EE608FDD}.Debug|x64.Build.0 = Debug|x64
+		{CCD4C110-F734-40E6-8D3E-8D55D52FB142}.Debug|x64.ActiveCfg = Debug|x64
+		{CCD4C110-F734-40E6-8D3E-8D55D52FB142}.Debug|x64.Build.0 = Debug|x64
+		{2513D309-1EA5-4067-98BA-6895D693DD6F}.Debug|x64.ActiveCfg = Debug|x64
+		{2513D309-1EA5-4067-98BA-6895D693DD6F}.Debug|x64.Build.0 = Debug|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
