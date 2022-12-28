@@ -23,6 +23,7 @@ namespace IngameScript
     {
         private readonly string ConnectorGroups = "ConnectorSys-Auto-#01";
         private const float VerticalOffset = 10.0f;
+        private const float PortOffset = 2.0f;
 
 
         private List<IMyShipConnector> connectors = new List<IMyShipConnector>();
@@ -92,17 +93,17 @@ namespace IngameScript
                 Echo($"{con.CustomName}: {con.Status}");
             }
 
-            //foreach(var hi in history)
-            //{
-            //    Echo(hi);
-            //}
+            foreach (var hi in history)
+            {
+                Echo(hi);
+            }
         }
 
         private string ConvertToMessage(List<IMyShipConnector> availables)
         {
             return ConnectorInfo
                 .StringifyList(availables
-                                    .Select(c => new ConnectorInfo(c, VerticalOffset))
+                                    .Select(c => new ConnectorInfo(c, VerticalOffset, PortOffset))
                                     .ToList());
         }
 
@@ -125,11 +126,11 @@ namespace IngameScript
         public const string RequestTag = "RequestConnectorInfo";
         public const string ResponseTag = "ResponseConnectorInfo";
 
-        public ConnectorInfo(IMyShipConnector connector, float verticalOffset)
+        public ConnectorInfo(IMyShipConnector connector, float verticalOffset, float portOffset)
         {
             name = connector.Name;
-            position = connector.GetPosition();
             rotation = Quaternion.CreateFromRotationMatrix(connector.WorldMatrix);
+            position = connector.GetPosition() + rotation.Forward * portOffset;
             approachOffset = rotation.Forward * verticalOffset;
         }
 
@@ -139,14 +140,6 @@ namespace IngameScript
             position = cposition;
             rotation = crot;
             approachOffset = capproachOffset;
-        }
-
-        public ConnectorInfo(IMyShipConnector connector)
-        {
-            name = connector.CustomName;
-            position = connector.GetPosition();
-            rotation = Quaternion.CreateFromRotationMatrix(connector.WorldMatrix);
-            this.approachOffset = Vector3.Zero;
         }
 
         public string Stringify()

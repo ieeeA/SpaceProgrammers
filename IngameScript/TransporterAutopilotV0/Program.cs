@@ -47,6 +47,7 @@ namespace IngameScript
         // control constant
         readonly float ReachConstant = 2.0f; // stoppingRange
         readonly float StoppingSpeed = 1f;
+        readonly int LandingCount = 20;
 
         // block search string
         readonly string MainConnectorName = "Connector";
@@ -69,6 +70,7 @@ namespace IngameScript
 
         // state value
         TransportV0StateMode mode = TransportV0StateMode.Initial;
+        int landingCounter = 0;
 
         Vector3D currentDestination;
         int currentWaypointIndex = 0;
@@ -193,9 +195,14 @@ namespace IngameScript
         public void Main(string argument, UpdateType updateSource)
         {
             Echo($"current TransportMode: {mode}");
-
-            // TODO: argument interuption (route instruction)
-
+            if (argument == StartCruiseCommand)
+            {
+                TransitMode(TransportV0StateMode.Forward);
+            }
+            if (argument == StopCommand)
+            {
+                TransitMode(TransportV0StateMode.Idling);
+            }
             UpdateMode(mode);
         }
 
@@ -211,12 +218,14 @@ namespace IngameScript
                     cruiseManager.Start(forwardRoute);
                     break;
                 case TransportV0StateMode.ForwardLanding:
+                    landingCounter = LandingCount;
                     connectionManager.StartProtocol();
                     break;
                 case TransportV0StateMode.Backward:
                     cruiseManager.Start(backwardRoute);
                     break;
                 case TransportV0StateMode.BackwardLanding:
+                    landingCounter = LandingCount;
                     connectionManager.StartProtocol();
                     break;
                 case TransportV0StateMode.Complete:
@@ -240,12 +249,15 @@ namespace IngameScript
                     break;
 
                 case TransportV0StateMode.Idling:
+                    thrusterController.AutoSwitchThruster();
+                    flightController.FreeFunctionalBlocks();
                     break;
 
                 case TransportV0StateMode.Forward:
                     cruiseManager.Update();
                     if (cruiseManager.CheckFinished())
                     {
+
                         TransitMode(TransportV0StateMode.ForwardLanding);
                     }
                     break;
@@ -254,7 +266,11 @@ namespace IngameScript
                     connectionManager.UpdateProtocol();
                     if (connectionManager.CheckFinished())
                     {
-                        TransitMode(TransportV0StateMode.Backward);
+                        landingCounter--;
+                        if (landingCounter < 0)
+                        {
+                            TransitMode(TransportV0StateMode.Backward);
+                        }
                     }
                     break;
 
@@ -270,7 +286,11 @@ namespace IngameScript
                     connectionManager.UpdateProtocol();
                     if (connectionManager.CheckFinished())
                     {
-                        TransitMode(TransportV0StateMode.Complete);
+                        landingCounter--;
+                        if (landingCounter < 0)
+                        {
+                            TransitMode(TransportV0StateMode.Complete);
+                        }
                     }
                     break;
 
@@ -285,17 +305,17 @@ namespace IngameScript
         public class FlightController
         {
             // constant value
-            public readonly float AntiGravityCoeff = 1.1f;
+            public readonly float AntiGravityCoeff = 1.0f;
             public readonly float GravityMergin = 0.05f;
 
-            public readonly float StoppingDistance = 2.0f; // stoppingRange
+            public readonly float StoppingDistance = 1.0f; // stoppingRange
             public readonly float StoppingSpeed = 1f;
+
+            public readonly float FittingDistance = 2.0f;
+            public readonly float FittingSpeed = 2f;
 
             public readonly float BrakingDistance = 100f;
             public readonly float BrakingSpeed = 5f;
-
-            public readonly float FittingDistance = 1f;
-            public readonly float FittingSpeed = 2f;
 
             public readonly float UpRunningDistance = 1000f;
             public readonly float UpRunningSpeed = 40f;
@@ -832,17 +852,18 @@ namespace IngameScript
                 switch (autoConnectionPhase)
                 {
                     case AutoConnectionPhase.RequestingConnectorInfo:
+                        client.UpdateClient();
                         if (client.Finished && 0 < client.KnownInfos.Count)
                         {
                             var infos = client.KnownInfos;
                             targetConnector = infos[0];
-                            foreach (var i in client.KnownInfos)
+                            foreach (var connecterInfo in client.KnownInfos)
                             {
                                 // get nearest connectable connector
                                 if ((targetConnector.position - mainConnector.GetPosition()).Length() >
-                                    (i.position - mainConnector.GetPosition()).Length())
+                                    (connecterInfo.position - mainConnector.GetPosition()).Length())
                                 {
-                                    targetConnector = i;
+                                    targetConnector = connecterInfo;
                                 }
                             }
                             autoConnectionPhase = AutoConnectionPhase.ApproachOffset;
@@ -933,7 +954,6 @@ namespace IngameScript
                 this.targetRoute = route;
                 currentWaypointIndex = 0;
                 workInProgress = true;
-
                 if (mainConnector.Status == MyShipConnectorStatus.Connected)
                 {
                     mode = RouteCruiseManagerMode.TakeOff;
@@ -954,6 +974,9 @@ namespace IngameScript
 
                 program.Echo($"Route: {targetRoute.name}({currentWaypointIndex})");
                 program.Echo($"CruisingMode:{mode}");
+                program.Echo($"Destination({currentWaypointIndex}): {currentDestination}");
+                program.Echo($"Direction: {GetDirection()}");
+                program.Echo($"Distance: {GetDirection().Length()}");
 
                 switch (mode)
                 {
@@ -961,6 +984,10 @@ namespace IngameScript
                         mode = RouteCruiseManagerMode.OrientationSetting;
                         flightController.thrusterController.AutoSwitchThruster();
                         flightController.FreeFunctionalBlocks();
+
+                        // destination setting
+                        currentWaypointIndex = 0;
+                        currentDestination = targetRoute.waypoints[0].position;
                         break;
 
                     case RouteCruiseManagerMode.TakeOff:
@@ -1008,6 +1035,8 @@ namespace IngameScript
                     {
                         workInProgress = false;
                         mode = RouteCruiseManagerMode.Idling;
+                        flightController.FreeFunctionalBlocks(); // next RouteCruiseManager.Update is not called.
+                        return;
                     }
                 }
 
@@ -1024,10 +1053,12 @@ namespace IngameScript
                 }
 
                 var direction = GetDirection();
-                if (direction.Length() < flightController.FittingDistance && 
+                if (direction.Length() < flightController.FittingDistance &&
                     cockpit.GetShipVelocities().LinearVelocity.Length() < flightController.FittingSpeed)
                 {
                     mode = RouteCruiseManagerMode.Initial;
+                    flightController.FreeFunctionalBlocks();
+                    return;
                 }
 
                 flightController.Move(direction);
@@ -1066,15 +1097,20 @@ namespace IngameScript
         #region connection
         public class ConnectorClient
         {
+            public const float FilteringRange = 100.0f;
+
             // cache
             IMyIntergridCommunicationSystem IGC;
 
-            List<ConnectorInfo> knownInfos = new List<ConnectorInfo>();
+            private List<ConnectorInfo> knownInfos = new List<ConnectorInfo>();
+            private Vector3 currentPosition;
+
             public bool Requesting { get; private set; } = false;
             public bool Finished { get; private set; } = false;
-
             // prop
             public List<ConnectorInfo> KnownInfos => knownInfos;
+
+
             public ConnectorClient(IMyIntergridCommunicationSystem IGC)
             {
                 this.IGC = IGC;
@@ -1085,6 +1121,8 @@ namespace IngameScript
             {
                 Requesting = true;
                 Finished = false;
+                knownInfos.Clear();
+                this.currentPosition = currentPosition;
             }
 
             public void UpdateClient()
@@ -1103,7 +1141,12 @@ namespace IngameScript
                             if (message.Data is string)
                             {
                                 var str = message.Data as string;
-                                knownInfos = ConnectorInfo.ParseList(str);
+                                var knownInfos = ConnectorInfo.ParseList(str);
+                                if (knownInfos.Where(x => (x.position - currentPosition).Length() < FilteringRange).Count() == 0)
+                                {
+                                    continue;
+                                }
+                                this.knownInfos = knownInfos;
                                 Finished = true;
                                 Requesting = false;
                             }
@@ -1201,9 +1244,9 @@ namespace IngameScript
                 foreach (var p in waypoints)
                 {
                     str += p.Stringify();
-                    str += ',';
+                    str += '?';
                 }
-                str.TrimEnd(',');
+                str = str.TrimEnd('?');
                 str += ']';
                 return str;
             }
@@ -1216,9 +1259,9 @@ namespace IngameScript
                 string name = compStr1[0];
 
                 var wayStr = compStr1[1];
-                wayStr.TrimStart('[');
-                wayStr.TrimEnd(']');
-                var compStr2 = wayStr.Split(',');
+                wayStr = wayStr.TrimStart('[');
+                wayStr = wayStr.TrimEnd(']');
+                var compStr2 = wayStr.Split('?');
 
                 var list = new List<AirWaypoint>();
                 foreach (var c in compStr2)
@@ -1265,8 +1308,8 @@ namespace IngameScript
             public static AirWaypoint Parse(string dataStr)
             {
                 var t = dataStr;
-                t.TrimStart('(');
-                t.TrimEnd(')');
+                t = t.TrimStart('(');
+                t = t.TrimEnd(')');
                 var compStrs = t.Split('#');
                 var pos = StringHelper.ParseVectorString(compStrs[0]);
                 var typeInt = int.Parse(compStrs[1]);

@@ -31,6 +31,7 @@ namespace IngameScript
 
         public const string RecordApproachCommand = "RecordApproach";
         public const string RecordUpRunningCommand = "RecordUpRunning";
+        public const string RecordBrakingCommand = "RecordBraking";
         public const string RecordFittingCommand = "RecordFitting";
         public const string RecordStoppingCommand = "RecordStopping";
 
@@ -73,6 +74,9 @@ namespace IngameScript
                     break;
                 case RecordUpRunningCommand:
                     AppendWaypoint(AirWaypoint.AirWaypointType.UpRunning);
+                    break;
+                case RecordBrakingCommand:
+                    AppendWaypoint(AirWaypoint.AirWaypointType.Braking);
                     break;
                 case RecordFittingCommand:
                     AppendWaypoint(AirWaypoint.AirWaypointType.Fitting);
@@ -118,10 +122,12 @@ namespace IngameScript
                 Echo(w.Stringify());
             }
 
-            string str = $"[{recordingTarget.name}]" + Environment.NewLine;
+            string str = $"[AirRoute]" + Environment.NewLine;
+            int i = 0;
             foreach (var w in recordingTarget.waypoints)
             {
-                str += w.Stringify() + Environment.NewLine;
+                str += i.ToString() + ":" + w.waypointType.ToString() + Environment.NewLine;
+                i++;
             }
             panel.GetSurface(0).WriteText(str);
         }
@@ -150,7 +156,7 @@ namespace IngameScript
                 str += p.Stringify();
                 str += ',';
             }
-            str.TrimEnd(',');
+            str = str.TrimEnd(',');
             str += ']';
             return str;
         }
