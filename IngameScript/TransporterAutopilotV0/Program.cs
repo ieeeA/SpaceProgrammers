@@ -33,8 +33,7 @@ namespace IngameScript
         // interface caching
         IMyCockpit cockpit;
         IMyShipConnector mainConnector;
-        IMyRemoteControl remoteControl;
-
+        
         // controllers
         ConnectorClient client;
         GyroController gyroController = null;
@@ -45,8 +44,6 @@ namespace IngameScript
 
         // constant value
         // control constant
-        readonly float ReachConstant = 2.0f; // stoppingRange
-        readonly float StoppingSpeed = 1f;
         readonly int LandingCount = 20;
 
         // block search string
@@ -54,7 +51,6 @@ namespace IngameScript
         readonly string CockpitName = "Cockpit";
         readonly string ControlSeatName = "Control Seat";
         readonly string GyroName = "Gyro";
-        readonly string RemoteControlName = "Remote";
 
         // control command
         readonly string StartCruiseCommand = "StartCruise";
@@ -72,24 +68,11 @@ namespace IngameScript
         TransportV0StateMode mode = TransportV0StateMode.Initial;
         int landingCounter = 0;
 
-        Vector3D currentDestination;
-        int currentWaypointIndex = 0;
-
         // route cache
         AirRoute forwardRoute = null;
         AirRoute backwardRoute = null;
 
         // state enum
-        enum TransportAutoPilotMode
-        {
-            Initial,
-            TakeOff,
-            Idling,
-            Cruising,
-            OrientationSetting,
-            AutoConnection,
-        }
-
         enum TransportV0StateMode
         {
             Initial,
@@ -110,7 +93,7 @@ namespace IngameScript
 
         public void Save()
         {
-
+            
         }
 
         private void InitializeCache()
@@ -164,10 +147,6 @@ namespace IngameScript
                 {
                     mainConnector = block as IMyShipConnector;
                 }
-            }
-            if (remoteControl == null)
-            {
-                currentDestination = cockpit.GetPosition();
             }
 
             // controller initialization
@@ -257,7 +236,6 @@ namespace IngameScript
                     cruiseManager.Update();
                     if (cruiseManager.CheckFinished())
                     {
-
                         TransitMode(TransportV0StateMode.ForwardLanding);
                     }
                     break;
@@ -666,6 +644,11 @@ namespace IngameScript
             // state
             private RotationPhase rotationPhase = RotationPhase.Neutral;
 
+            // calculation cache
+            // IMyGyro => cockpit axis index =>  axis gyro index (1(-1): roll, 2(-2): pitch 3(-3): yaw)
+            // if index is below zero, an opposite axis is active.
+            private Dictionary<IMyGyro, int[]> gyro2AxisMap = new Dictionary<IMyGyro, int[]>();
+
             enum RotationPhase
             {
                 Roll, Pitch, Yaw, Neutral
@@ -675,6 +658,7 @@ namespace IngameScript
             {
                 this.gyros = _gyros;
                 this.cockpit = _cockpit;
+                CalculateAxisMap(); // TODO: test
             }
 
             public bool AlignToGround(Vector3 direction, Vector3 groundAxis)
@@ -784,6 +768,7 @@ namespace IngameScript
 
             public void FreeGyro()
             {
+                SetGyro(0, 0, 0);
                 foreach (var gyro in gyros)
                 {
                     gyro.GyroOverride = false;
@@ -792,13 +777,79 @@ namespace IngameScript
 
             private void SetGyro(double roll, double pitch, double yaw)
             {
-                // TODO: multi-direction gyroscopes
                 foreach (var gyro in gyros)
                 {
                     gyro.GyroOverride = true;
                     gyro.Roll = (float)roll * GyroSensitivity;
                     gyro.Pitch = (float)pitch * GyroSensitivity;
                     gyro.Yaw = (float)yaw * GyroSensitivity;
+                }
+
+                // for free-direction gyroscope (TODO: require test)
+                //var targetSpeeds = new float[] { (float)roll, (float)pitch, (float)yaw };
+                //foreach (var gyro in gyros)
+                //{
+                //    gyro.GyroOverride = true;
+                //    var mapIndexMap = gyro2AxisMap[gyro];
+                //    for (int i = 0; i < targetSpeeds.Length; i++)
+                //    {
+                //        var idx = mapIndexMap[i];
+                //        var speed = idx >= 0 ? targetSpeeds[i] : -targetSpeeds[i];
+                //        speed *= GyroSensitivity;
+                //        switch (idx - 1)
+                //        {
+                //            case 0:
+                //                gyro.Roll = speed;
+                //                break;
+                //            case 1:
+                //                gyro.Pitch = speed;
+                //                break;
+                //            case 2:
+                //                gyro.Yaw = speed;
+                //                break;
+                //            default:
+                //                break;
+                //        }
+                //    }
+                //}
+            }
+
+            private void CalculateAxisMap()
+            {
+                var shipRot = cockpit.WorldMatrix;
+                var shipAxises = new Vector3[] { 
+                    shipRot.Forward, // roll
+                    shipRot.Right, // pitch 
+                    shipRot.Up, // yaw
+                };
+
+                gyro2AxisMap = new Dictionary<IMyGyro, int[]>();
+                foreach(var gyro in gyros)
+                {
+                    var grot = gyro.WorldMatrix;
+                    gyro2AxisMap[gyro] = new int[shipAxises.Length];
+                    var gaxies = new Vector3[]
+                    {
+                        grot.Forward, // local roll
+                        grot.Right, // local pitch
+                        grot.Up // local yaw
+                    };
+                    for (int i = 0; i < shipAxises.Length; i++)
+                    {
+                        for (int j = 0; j < gaxies.Length; j++)
+                        {
+                            if (Vector3.Dot(shipAxises[i], gaxies[j]) > 0.9f)
+                            {
+                                gyro2AxisMap[gyro][i] = (j + 1);
+                                break;
+                            }
+                            if (Vector3.Dot(shipAxises[i], gaxies[j]) < -0.9f)
+                            {
+                                gyro2AxisMap[gyro][i] = -(j + 1);
+                                break;
+                            }
+                        }
+                    }
                 }
             }
         }
